@@ -12,13 +12,14 @@ mod matrix;
 mod line;
 mod triangle;
 mod fragment;
+mod light;
 
 use framebuffer::Framebuffer;
 use camera::Camera;
 use obj::Obj;
 
 use triangle::triangle;
-use crate::matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4};
+use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}};
 
 
 fn transform(
@@ -60,6 +61,7 @@ pub fn render(
     projection: &Matrix,
     viewport: &Matrix,
 ) {
+    let light = Light::new(Vector3::new(0.0, 10.0, 0.0));
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
     for vertex in vertex_array {
         let transformed = transform(vertex.clone(), translation, scale, rotation, view, projection, viewport);
@@ -81,7 +83,7 @@ pub fn render(
     // Rasterization Stage
     let mut fragments = Vec::new();
     for tri in &triangles {
-        fragments.extend(triangle(&tri[0], &tri[1], &tri[2]));
+        fragments.extend(triangle(&tri[0], &tri[1], &tri[2], &light));
     }
 
     // Fragment Processing Stage
@@ -90,6 +92,7 @@ pub fn render(
         framebuffer.set_pixel(
             fragment.position.x as u32,
             fragment.position.y as u32,
+            fragment.depth
         );
     }
 
@@ -97,7 +100,7 @@ pub fn render(
 
 fn main() {
     let window_width = 1300;
-    let window_height = 900;
+    let window_height = 600;
 
     let (mut window, raylib_thread) = raylib::init()
         .size(window_width, window_height)
@@ -112,14 +115,14 @@ fn main() {
     framebuffer.set_background_color(Color::new(4, 12, 36, 255));
 
     let mut translation = Vector3::new(0.0, 0.0, 0.0);
-    let scale = 0.10;
+    let scale = 1.0;
     let mut rotation = Vector3::new(0.0, 0.0, 0.0);
 
     let obj = Obj::load("nave.obj").expect("Failed to load");
     let vtxarray = obj.get_vertex_array();
 
     let mut camera = Camera::new(
-        Vector3::new(0.0, 0.0, 1.0),
+        Vector3::new(0.0, 0.0, 5.0),
         Vector3::new(0.0, 0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
     );

@@ -5,36 +5,42 @@ pub struct Framebuffer {
     pub color_buffer: Image,
     background_color: Color,
     current_color: Color,
+    texture: Option<Texture2D>,
+    depth_buffer: Vec<f32>
 }
 
 impl Framebuffer {
     pub fn new(width: u32, height: u32, background_color: Color) -> Self {
         let color_buffer = Image::gen_image_color(width as i32, height as i32, background_color);
+        let depth_buffer = vec![f32::INFINITY; (width*height) as usize];
         Framebuffer {
             width,
             height,
             color_buffer,
             background_color,
             current_color: Color::WHITE,
+            texture: None,
+            depth_buffer
         }
+    }
+
+    pub fn init_texture(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+        self.texture = Some(rl.load_texture_from_image(thread, &self.color_buffer).unwrap());
     }
 
     /// Clears the framebuffer by regenerating the color buffer with the background color
     pub fn clear(&mut self) {
         self.color_buffer = Image::gen_image_color(self.width as i32, self.height as i32, self.background_color);
+        self.depth_buffer.fill(f32::INFINITY);
     }
 
     /// Sets a single pixel in the buffer to the current color, if within bounds
-    pub fn set_pixel(&mut self, x: u32, y: u32) {
-        if x < self.width && y < self.height {
+    pub fn set_pixel(&mut self, x: u32, y: u32, depth: f32) {
+        if x < self.width && y < self.height && depth < self.depth_buffer[(y*self.height + x) as usize] {
             // Calculate the offset into the Image data (raylib stores pixels in row-major order)
+            self.depth_buffer[(y*self.height + x) as usize] = depth;
             self.color_buffer.draw_pixel(x as i32, y as i32, self.current_color);
-            //let offset = (y * self.width + x) as usize;
-            // Safety: data is a contiguous Vec<u8> RGBA, but raylib-rs Image uses Color per u32
-            //unsafe {
-                //let ptr = self.color_buffer.data().as_mut_ptr() as *mut Color;
-                //*ptr.add(offset) = self.current_color;
-            //}
+            
         }
     }
     pub fn get_color(&mut self, x: u32, y: u32) {
