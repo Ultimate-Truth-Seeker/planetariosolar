@@ -13,13 +13,15 @@ mod line;
 mod triangle;
 mod fragment;
 mod light;
+mod shaders;
+mod uniforms;
 
 use framebuffer::Framebuffer;
 use camera::Camera;
 use obj::Obj;
 
 use triangle::triangle;
-use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}};
+use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}, shaders::fragment_shader, uniforms::Uniforms};
 
 
 fn transform(
@@ -80,15 +82,24 @@ pub fn render(
         }
     }
 
+    let mut t0 = std::time::Instant::now();
+    
     // Rasterization Stage
     let mut fragments = Vec::new();
     for tri in &triangles {
         fragments.extend(triangle(&tri[0], &tri[1], &tri[2], &light));
     }
+    
+    let elapsed = t0.elapsed().as_secs_f32();
+    let uniforms = Uniforms {
+        time: elapsed,
+        resolution: Vector2::new(1300 as f32, 600 as f32),
+    };
 
     // Fragment Processing Stage
     for fragment in fragments {
-        framebuffer.set_current_color(fragment.color);
+        let final_color = fragment_shader(&fragment, &uniforms);
+        framebuffer.set_current_color(Color::new(final_color.x as u8, final_color.y as u8, final_color.z as u8, 255),);
         framebuffer.set_pixel(
             fragment.position.x as u32,
             fragment.position.y as u32,

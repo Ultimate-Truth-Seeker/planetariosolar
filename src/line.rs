@@ -4,7 +4,7 @@ use crate::fragment::Fragment;
 
 /// Rasteriza una línea (Bresenham) entre dos puntos en espacio de pantalla (x,y) con profundidad (z).
 /// Devuelve los Fragment generados; el pintado queda a cargo del caller.
-pub fn line(a: &Vector3, b: &Vector3, color: Color) -> Vec<Fragment> {
+pub fn line(a: &Vector3, b: &Vector3, color: Vector3) -> Vec<Fragment> {
     let mut x0 = a.x.round() as i32;
     let mut y0 = a.y.round() as i32;
     let x1 = b.x.round() as i32;

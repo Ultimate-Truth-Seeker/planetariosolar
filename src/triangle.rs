@@ -55,14 +55,15 @@ pub fn triangle(v1: &Vector3, v2: &Vector3, v3: &Vector3, light: &Light) -> Vec<
             let color = color_a*w +color_b*v + color_c*u;
 
             let intensity = v1.dot(light).max(0.0);
-            let final_color = color*intensity;
+            let final_color = Vector3::new(1.0, 1.0, 1.0)*intensity;
 
 
             if w >= 0.0 && v >= 0.0 && u >= 0.0 {
                 fragments.push(Fragment::new(
                     x as f32,
                     y as f32,
-                    Color::new(final_color.x as u8, final_color.y as u8, final_color.z as u8, 255),
+                    //Color::new(final_color.x as u8, final_color.y as u8, final_color.z as u8, 255),
+                    final_color,
                     depth,
                 ));
             }
