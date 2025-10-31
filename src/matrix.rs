@@ -51,55 +51,53 @@ pub fn new_matrix3(
 
 /// Creates a model matrix combining translation, scale, and rotation
 pub fn create_model_matrix(translation: Vector3, scale: f32, rotation: Vector3) -> Matrix {
-    let (sin_x, cos_x) = rotation.x.sin_cos();
-    let (sin_y, cos_y) = rotation.y.sin_cos();
-    let (sin_z, cos_z) = rotation.z.sin_cos();
+    let (sx, sy, sz) = (scale, scale, scale); // uniform scaling
+    // Scale
+    let ms = Matrix {
+        m0: sx, m4: 0.0, m8: 0.0,  m12: 0.0,
+        m1: 0.0, m5: sy, m9: 0.0,  m13: 0.0,
+        m2: 0.0, m6: 0.0, m10: sz, m14: 0.0,
+        m3: 0.0, m7: 0.0, m11: 0.0, m15: 1.0,
+    };
+    // Rotation X
+    let (sxn, cxn) = rotation.x.sin_cos();
+    let rx = Matrix {
+        m0: 1.0, m4: 0.0,  m8: 0.0,   m12: 0.0,
+        m1: 0.0, m5: cxn,  m9: -sxn,  m13: 0.0,
+        m2: 0.0, m6: sxn,  m10: cxn,  m14: 0.0,
+        m3: 0.0, m7: 0.0,  m11: 0.0,  m15: 1.0,
+    };
+    // Rotation Y
+    let (syn, cyn) = rotation.y.sin_cos();
+    let ry = Matrix {
+        m0: cyn,  m4: 0.0, m8: syn,  m12: 0.0,
+        m1: 0.0,  m5: 1.0, m9: 0.0,  m13: 0.0,
+        m2: -syn, m6: 0.0, m10: cyn, m14: 0.0,
+        m3: 0.0,  m7: 0.0, m11: 0.0, m15: 1.0,
+    };
+    // Rotation Z
+    let (szn, czn) = rotation.z.sin_cos();
+    let rz = Matrix {
+        m0: czn,  m4: -szn, m8: 0.0, m12: 0.0,
+        m1: szn,  m5:  czn, m9: 0.0, m13: 0.0,
+        m2: 0.0,  m6:  0.0, m10: 1.0, m14: 0.0,
+        m3: 0.0,  m7:  0.0, m11: 0.0, m15: 1.0,
+    };
+    // Translation
+    let mt = Matrix {
+        m0: 1.0, m4: 0.0, m8: 0.0, m12: translation.x,
+        m1: 0.0, m5: 1.0, m9: 0.0, m13: translation.y,
+        m2: 0.0, m6: 0.0, m10: 1.0, m14: translation.z,
+        m3: 0.0, m7: 0.0, m11: 0.0, m15: 1.0,
+    };
 
-    // Rotation around the X-axis
-    let rotation_matrix_x = new_matrix4(
-        1.0, 0.0,    0.0,    0.0,
-        0.0, cos_x,  -sin_x, 0.0,
-        0.0, sin_x,  cos_x,  0.0,
-        0.0, 0.0,    0.0,    1.0
-    );
-
-    // Rotation around the Y-axis
-    let rotation_matrix_y = new_matrix4(
-        cos_y,  0.0, sin_y, 0.0,
-        0.0,    1.0, 0.0,   0.0,
-        -sin_y, 0.0, cos_y, 0.0,
-        0.0,    0.0, 0.0,   1.0
-    );
-
-    // Rotation around the Z-axis
-    let rotation_matrix_z = new_matrix4(
-        cos_z, -sin_z, 0.0, 0.0,
-        sin_z, cos_z,  0.0, 0.0,
-        0.0,   0.0,    1.0, 0.0,
-        0.0,   0.0,    0.0, 1.0
-    );
-
-    let rotation_matrix = rotation_matrix_z * rotation_matrix_y * rotation_matrix_x;
-
-    // Scaling matrix
-    let scale_matrix = new_matrix4(
-        scale, 0.0,   0.0,   0.0,
-        0.0,   scale, 0.0,   0.0,
-        0.0,   0.0,   scale, 0.0,
-        0.0,   0.0,   0.0,   1.0
-    );
-
-    // Translation matrix
-    let translation_matrix = new_matrix4(
-        1.0, 0.0, 0.0, translation.x,
-        0.0, 1.0, 0.0, translation.y,
-        0.0, 0.0, 1.0, translation.z,
-        0.0, 0.0, 0.0, 1.0
-    );
-
-    translation_matrix * rotation_matrix * scale_matrix
+    // Compose: M = T · Rz · Ry · Rx · S
+    let mrs = multiply_matrix_matrix(&rz, &ry);
+    let mrs = multiply_matrix_matrix(&mrs, &rx);
+    let mrs = multiply_matrix_matrix(&mrs, &ms);
+    let mrst = multiply_matrix_matrix(&mt, &mrs);
+    mrst
 }
-
 /// Creates a view matrix using camera position, target, and up vector
 /// This implements a lookAt matrix for camera transformations
 pub fn create_view_matrix(eye: Vector3, target: Vector3, up: Vector3) -> Matrix {
@@ -173,4 +171,27 @@ pub fn create_viewport_matrix(x: f32, y: f32, width: f32, height: f32) -> Matrix
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0,
     )
+}
+pub fn multiply_matrix_matrix(a: &Matrix, b: &Matrix) -> Matrix {
+    Matrix {
+        m0:  a.m0*b.m0  + a.m4*b.m1  + a.m8*b.m2  + a.m12*b.m3,
+        m1:  a.m1*b.m0  + a.m5*b.m1  + a.m9*b.m2  + a.m13*b.m3,
+        m2:  a.m2*b.m0  + a.m6*b.m1  + a.m10*b.m2 + a.m14*b.m3,
+        m3:  a.m3*b.m0  + a.m7*b.m1  + a.m11*b.m2 + a.m15*b.m3,
+
+        m4:  a.m0*b.m4  + a.m4*b.m5  + a.m8*b.m6  + a.m12*b.m7,
+        m5:  a.m1*b.m4  + a.m5*b.m5  + a.m9*b.m6  + a.m13*b.m7,
+        m6:  a.m2*b.m4  + a.m6*b.m5  + a.m10*b.m6 + a.m14*b.m7,
+        m7:  a.m3*b.m4  + a.m7*b.m5  + a.m11*b.m6 + a.m15*b.m7,
+
+        m8:  a.m0*b.m8  + a.m4*b.m9  + a.m8*b.m10 + a.m12*b.m11,
+        m9:  a.m1*b.m8  + a.m5*b.m9  + a.m9*b.m10 + a.m13*b.m11,
+        m10: a.m2*b.m8  + a.m6*b.m9  + a.m10*b.m10+ a.m14*b.m11,
+        m11: a.m3*b.m8  + a.m7*b.m9  + a.m11*b.m10+ a.m15*b.m11,
+
+        m12: a.m0*b.m12 + a.m4*b.m13 + a.m8*b.m14 + a.m12*b.m15,
+        m13: a.m1*b.m12 + a.m5*b.m13 + a.m9*b.m14 + a.m13*b.m15,
+        m14: a.m2*b.m12 + a.m6*b.m13 + a.m10*b.m14+ a.m14*b.m15,
+        m15: a.m3*b.m12 + a.m7*b.m13 + a.m11*b.m14+ a.m15*b.m15,
+    }
 }

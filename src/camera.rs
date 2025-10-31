@@ -65,6 +65,10 @@ impl Camera {
     pub fn get_view_matrix(&self) -> Matrix {
         create_view_matrix(self.eye, self.target, self.up)
     }
+    pub fn set_target(&mut self, new_target: Vector3) {
+        self.target = new_target;
+        self.update_eye_position();
+    }
 
     /// Process keyboard input to control the camera
     pub fn process_input(&mut self, window: &RaylibHandle) {

@@ -55,7 +55,7 @@ pub fn triangle(v1: &Vector3, v2: &Vector3, v3: &Vector3, light: &Light) -> Vec<
             let color = color_a*w +color_b*v + color_c*u;
 
             let intensity = v1.dot(light).max(0.0);
-            let final_color = Vector3::new(1.0, 1.0, 1.0)*intensity;
+            let final_color = color*intensity;//Vector3::new(1.0, 1.0, 1.0)*intensity;
 
 
             if w >= 0.0 && v >= 0.0 && u >= 0.0 {

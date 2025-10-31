@@ -36,9 +36,9 @@ impl Framebuffer {
 
     /// Sets a single pixel in the buffer to the current color, if within bounds
     pub fn set_pixel(&mut self, x: u32, y: u32, depth: f32) {
-        if x < self.width && y < self.height && depth < self.depth_buffer[(y*self.height + x) as usize] {
+        if x < self.width && y < self.height && depth < self.depth_buffer[(y*self.width + x) as usize] {
             // Calculate the offset into the Image data (raylib stores pixels in row-major order)
-            self.depth_buffer[(y*self.height + x) as usize] = depth;
+            self.depth_buffer[(y*self.width + x) as usize] = depth;
             self.color_buffer.draw_pixel(x as i32, y as i32, self.current_color);
             
         }
