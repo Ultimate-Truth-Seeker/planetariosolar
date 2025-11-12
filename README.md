@@ -69,7 +69,7 @@ Material {
 ## 🖼️ Capturas de pantalla
 
 ### Vista general del sistema planetario
-![Sistema completo](./docs/screenshots/planets_overview.png)
+![Sistema completo](planets_overview.png)
 
 ---
 
