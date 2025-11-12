@@ -28,7 +28,7 @@ use camera::Camera;
 use obj::Obj;
 
 use triangle::triangle;
-use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}, shaders::fragment_shader, uniforms::Uniforms};
+use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}, shaders::fragment_shader, uniforms::{Uniforms, vec3_to_color}};
 use crate::procedural::{generate_uv_sphere, generate_ring};
 
 // --- Scene entities ---
@@ -55,6 +55,8 @@ struct Entity {
     motion: Motion,
     vertices: Vec<Vector3>,
     vshader: VertexShader,
+    spin: Vector3,            // angular velocity (rad/s) around each local axis
+    face_tangent: bool,       // if true, add tangent-facing yaw from orbital motion
 }
 
 fn apply_vertex_shader(v: Vector3, shader: &VertexShader, time: f32) -> Vector3 {
@@ -155,7 +157,7 @@ pub fn render(
 
     // Fragment Processing Stage
     for fragment in fragments {
-        let final_color = fragment.color;//fragment_shader(&fragment, &uniforms);//fragment.color;
+        let final_color = fragment_shader(&fragment, &uniforms);//fragment.color;
         framebuffer.set_current_color(Color::new(final_color.x as u8, final_color.y as u8, final_color.z as u8, 255),);
         framebuffer.set_pixel(
             fragment.position.x as u32,
@@ -207,6 +209,8 @@ fn main() {
             motion: Motion::Static,
             vertices: ship_vertices.clone(),
             vshader: VertexShader::Identity,
+            spin: Vector3::new(0.0, 0.0, 0.0),
+            face_tangent: false,
         },
         Entity {
             name: "sun",
@@ -216,6 +220,8 @@ fn main() {
             motion: Motion::Static,
             vertices: generate_uv_sphere(3.0, 24, 32),
             vshader: VertexShader::Identity,
+            spin: Vector3::new(0.0, 0.2, 0.0),
+            face_tangent: false,
         },
         
         Entity {
@@ -228,6 +234,8 @@ fn main() {
             },
             vertices: planet_vertices.clone(),
             vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
+            spin: Vector3::new(0.0, 0.6, 0.0),
+            face_tangent: false,
         },
         Entity {
             name: "planet_rocky",
@@ -239,6 +247,8 @@ fn main() {
             },
             vertices: generate_uv_sphere(0.8, 16, 24),
             vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
+            spin: Vector3::new(0.0, 1.2, 0.0),
+            face_tangent: false,
         },
         // Planet ring (tilt a bit for a nice look)
         Entity {
@@ -254,6 +264,8 @@ fn main() {
             },
             vertices: ring_vertices,
             vshader: VertexShader::DisplacePlanarY { amp: 0.06, freq: 6.0, octaves: 3, lacunarity: 2.0, gain: 0.55, time_amp: 0.6 },
+            spin: Vector3::new(0.0, 0.0, 0.0),
+            face_tangent: false,
         },
         // Moon orbiting the planet procedurally (no external model)
         Entity {
@@ -269,6 +281,8 @@ fn main() {
             },
             vertices: moon_vertices,
             vshader: VertexShader::DisplaceSpherical { amp: 0.03, freq: 3.0, octaves: 3, lacunarity: 2.0, gain: 0.5, time_amp: 0.15 },
+            spin: Vector3::new(0.0, 0.8, 0.0),
+            face_tangent: true,
         },
     ];
 
@@ -301,7 +315,7 @@ fn main() {
                     entities[i].translation.x = center.x + radius * theta.cos();
                     entities[i].translation.z = center.z + radius * theta.sin();
                     entities[i].translation.y = center.y;
-                    entities[i].rotation.y = -theta;
+                    // entities[i].rotation.y = -theta; // removed
                 }
                 Motion::OrbitAround { .. } => { /* defer to pass 2 */ }
             }
@@ -317,7 +331,7 @@ fn main() {
                     if radius == 0.0 {
                         // Keep centered on parent; allow spin-in-place via rotation if desired
                         entities[i].translation = parent_pos;
-                        entities[i].rotation.y = -theta; // optional spin
+                        // entities[i].rotation.y = -theta; // removed
                     } else {
                         // Orbit around parent in world axes (no coupling to parent's heading)
                         let world_offset = Vector3::new(radius * theta.cos(), 0.0, radius * theta.sin());
@@ -326,8 +340,7 @@ fn main() {
                             parent_pos.y + world_offset.y,
                             parent_pos.z + world_offset.z,
                         );
-                        // Face tangentially to its own orbit
-                        entities[i].rotation.y = -theta;
+                        // entities[i].rotation.y = -theta; // removed
                     }
                 }
             }
@@ -342,11 +355,34 @@ fn main() {
 
         // --- Render all entities ---
         for e in &entities {
+            // Compute effective rotation (do not mutate e.rotation):
+            let mut rot = e.rotation;
+
+            // Add tangent-facing yaw from orbital motion if requested
+            if e.face_tangent {
+                match e.motion {
+                    Motion::Orbit { angular_speed, phase, .. } => {
+                        let theta = phase + angular_speed * time;
+                        rot.y += -theta;
+                    }
+                    Motion::OrbitAround { angular_speed, phase, .. } => {
+                        let theta = phase + angular_speed * time;
+                        rot.y += -theta;
+                    }
+                    Motion::Static => {}
+                }
+            }
+
+            // Add self spin (axial rotation)
+            rot.x += e.spin.x * time;
+            rot.y += e.spin.y * time;
+            rot.z += e.spin.z * time;
+
             render(
                 &mut framebuffer,
                 e.translation,
                 e.scale,
-                e.rotation,
+                rot,
                 &e.vertices,
                 &view,
                 &projection,
