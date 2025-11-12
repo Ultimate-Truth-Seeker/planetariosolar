@@ -26,6 +26,7 @@ mod procedural;
 use framebuffer::Framebuffer;
 use camera::Camera;
 use obj::Obj;
+use shaders::Material;
 
 use triangle::triangle;
 use crate::{light::Light, matrix::{create_model_matrix, create_projection_matrix, create_view_matrix, create_viewport_matrix, multiply_matrix_vector4}, shaders::fragment_shader, uniforms::{Uniforms, vec3_to_color}};
@@ -47,6 +48,21 @@ enum VertexShader {
 }
 
 #[derive(Clone)]
+struct ShaderConfig {
+    pub enabled: bool,  // master on/off for this entity shader
+    pub layer1: bool,   // e.g., base albedo / palette
+    pub layer2: bool,   // e.g., stripes/rings
+    pub layer3: bool,   // e.g., noise/perturbation
+    pub layer4: bool,   // e.g., scanlines/accents
+}
+
+#[derive(Clone, Copy)]
+enum ShaderViewMode {
+    All,                 // draw entities with their own enabled flags
+    Solo(usize),         // draw only this entity's shader (others fallback to base color)
+}
+
+#[derive(Clone)]
 struct Entity {
     name: &'static str,
     translation: Vector3,
@@ -57,6 +73,8 @@ struct Entity {
     vshader: VertexShader,
     spin: Vector3,            // angular velocity (rad/s) around each local axis
     face_tangent: bool,       // if true, add tangent-facing yaw from orbital motion
+    shader: ShaderConfig,
+    material: Material,
 }
 
 fn apply_vertex_shader(v: Vector3, shader: &VertexShader, time: f32) -> Vector3 {
@@ -123,6 +141,9 @@ pub fn render(
     time: f32,
     resolution: Vector2,
     vshader: &VertexShader,
+    apply_shader: bool,
+    layers: (bool, bool, bool, bool),
+    material: &Material,
 ) {
     let light = Light::new(Vector3::new(0.0, 10.0, 0.0));
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
@@ -157,8 +178,19 @@ pub fn render(
 
     // Fragment Processing Stage
     for fragment in fragments {
-        let final_color = fragment_shader(&fragment, &uniforms);//fragment.color;
-        framebuffer.set_current_color(Color::new(final_color.x as u8, final_color.y as u8, final_color.z as u8, 255),);
+        let final_rgb = if apply_shader {
+            // For now, we pass through to the shared shader; later we will expand to use layers tuple.
+            fragment_shader(&fragment, &uniforms, layers, material)
+        } else {
+            // Fallback: use fragment base color as 0..1
+            Vector3::new(
+                fragment.color.x.min(255.0) / 255.0,
+                fragment.color.y.min(255.0) / 255.0,
+                fragment.color.z.min(255.0) / 255.0,
+            )
+        };
+        let out = vec3_to_color(final_rgb);
+        framebuffer.set_current_color(out);
         framebuffer.set_pixel(
             fragment.position.x as u32,
             fragment.position.y as u32,
@@ -211,6 +243,8 @@ fn main() {
             vshader: VertexShader::Identity,
             spin: Vector3::new(0.0, 0.0, 0.0),
             face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
         },
         Entity {
             name: "sun",
@@ -222,6 +256,8 @@ fn main() {
             vshader: VertexShader::Identity,
             spin: Vector3::new(0.0, 0.2, 0.0),
             face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::star(),
         },
         
         Entity {
@@ -236,6 +272,8 @@ fn main() {
             vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
             spin: Vector3::new(0.0, 0.6, 0.0),
             face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::gaseous(),
         },
         Entity {
             name: "planet_rocky",
@@ -249,6 +287,8 @@ fn main() {
             vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
             spin: Vector3::new(0.0, 1.2, 0.0),
             face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
         },
         // Planet ring (tilt a bit for a nice look)
         Entity {
@@ -266,6 +306,8 @@ fn main() {
             vshader: VertexShader::DisplacePlanarY { amp: 0.06, freq: 6.0, octaves: 3, lacunarity: 2.0, gain: 0.55, time_amp: 0.6 },
             spin: Vector3::new(0.0, 0.0, 0.0),
             face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::ring(),
         },
         // Moon orbiting the planet procedurally (no external model)
         Entity {
@@ -283,11 +325,99 @@ fn main() {
             vshader: VertexShader::DisplaceSpherical { amp: 0.03, freq: 3.0, octaves: 3, lacunarity: 2.0, gain: 0.5, time_amp: 0.15 },
             spin: Vector3::new(0.0, 0.8, 0.0),
             face_tangent: true,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
+        },
+        Entity {
+            name: "planet_gas2",
+            translation: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: 1.0,
+            motion: Motion::Orbit { 
+                center: Vector3::new(0.0, 0.0, 0.0), radius: 40.0, angular_speed: 0.7, phase: 0.0 
+            },
+            vertices: planet_vertices.clone(),
+            vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
+            spin: Vector3::new(0.0, 0.6, 0.0),
+            face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::gaseous(),
+        },
+        Entity {
+            name: "planet_rocky2",
+            translation: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: 1.0,
+            motion: Motion::Orbit { 
+                center: Vector3::new(0.0, 0.0, 0.0), radius: 30.0, angular_speed: 0.75, phase: 0.0 
+            },
+            vertices: generate_uv_sphere(0.8, 16, 24),
+            vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
+            spin: Vector3::new(0.0, 1.2, 0.0),
+            face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
+        },
+        // Planet ring (tilt a bit for a nice look)
+        Entity {
+            name: "planet_ring2",
+            translation: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0), // tilt (radians)
+            scale: 1.0,
+            motion: Motion::OrbitAround {
+                parent: "planet_gas2",
+                radius: 0.0,
+                angular_speed: 0.0,
+                phase: 0.0,
+            },
+            vertices: generate_ring(1.6, 2.4, 128),
+            vshader: VertexShader::DisplacePlanarY { amp: 0.06, freq: 6.0, octaves: 3, lacunarity: 2.0, gain: 0.55, time_amp: 0.6 },
+            spin: Vector3::new(0.0, 0.0, 0.0),
+            face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::ring(),
+        },
+        // Moon orbiting the planet procedurally (no external model)
+        Entity {
+            name: "moon2",
+            translation: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: 1.0,
+            motion: Motion::OrbitAround {
+                parent: "planet_rocky2",
+                radius: 1.5,
+                angular_speed: 1.0,
+                phase: 0.0,
+            },
+            vertices: generate_uv_sphere(0.4, 16, 24),
+            vshader: VertexShader::DisplaceSpherical { amp: 0.03, freq: 3.0, octaves: 3, lacunarity: 2.0, gain: 0.5, time_amp: 0.15 },
+            spin: Vector3::new(0.0, 0.8, 0.0),
+            face_tangent: true,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
+        },
+        Entity {
+            name: "planet_rocky3",
+            translation: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
+            scale: 1.0,
+            motion: Motion::Orbit { 
+                center: Vector3::new(0.0, 0.0, 0.0), radius: 50.0, angular_speed: 0.65, phase: 0.0 
+            },
+            vertices: generate_uv_sphere(0.8, 16, 24),
+            vshader: VertexShader::DisplaceSpherical { amp: 0.08, freq: 2.5, octaves: 4, lacunarity: 2.0, gain: 0.5, time_amp: 0.2 },
+            spin: Vector3::new(0.0, 1.2, 0.0),
+            face_tangent: false,
+            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
+            material: Material::rocky(),
         },
     ];
 
+    let mut shader_view = ShaderViewMode::All;
+    let mut selected_entity: usize = 0; // index to control via keyboard
+
     let mut camera = Camera::new(
-        Vector3::new(0.0, 0.0, 50.0),
+        Vector3::new(0.0, 0.0, 70.0),
         Vector3::new(0.0, 0.0, 0.0),
         Vector3::new(0.0, 1.0, 0.0),
     );
@@ -297,6 +427,44 @@ fn main() {
     while !window.window_should_close() {
         framebuffer.clear();
         camera.process_input(&window);
+
+        // --- UI keyboard controls for shader toggling ---
+        // Select entity with number keys 1..=9 (or clamp)
+        if window.is_key_pressed(KeyboardKey::KEY_ONE)   { selected_entity = selected_entity.saturating_sub(selected_entity); } // 0
+        if window.is_key_pressed(KeyboardKey::KEY_TWO)   { selected_entity = 1.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_THREE) { selected_entity = 2.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_FOUR)  { selected_entity = 3.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_FIVE)  { selected_entity = 4.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_SIX)   { selected_entity = 5.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_SEVEN) { selected_entity = 6.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_EIGHT) { selected_entity = 7.min(entities.len().saturating_sub(1)); }
+        if window.is_key_pressed(KeyboardKey::KEY_NINE)  { selected_entity = 8.min(entities.len().saturating_sub(1)); }
+
+        // Toggle per-entity master enabled with 'T'
+        if window.is_key_pressed(KeyboardKey::KEY_T) {
+            let e = &mut entities[selected_entity];
+            e.shader.enabled = !e.shader.enabled;
+        }
+        // Toggle layers with G/H/J/K
+        if window.is_key_pressed(KeyboardKey::KEY_G) {
+            entities[selected_entity].shader.layer1 = !entities[selected_entity].shader.layer1;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_H) {
+            entities[selected_entity].shader.layer2 = !entities[selected_entity].shader.layer2;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_J) {
+            entities[selected_entity].shader.layer3 = !entities[selected_entity].shader.layer3;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_K) {
+            entities[selected_entity].shader.layer4 = !entities[selected_entity].shader.layer4;
+        }
+        // Solo view: press 'Y' to solo the selected entity; 'U' to show all
+        if window.is_key_pressed(KeyboardKey::KEY_Y) {
+            shader_view = ShaderViewMode::Solo(selected_entity);
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_U) {
+            shader_view = ShaderViewMode::All;
+        }
 
         // Global time and resolution
         let time = start_time.elapsed().as_secs_f32();
@@ -378,6 +546,14 @@ fn main() {
             rot.y += e.spin.y * time;
             rot.z += e.spin.z * time;
 
+            let apply_shader = match shader_view {
+                ShaderViewMode::All => e.shader.enabled,
+                ShaderViewMode::Solo(idx) => {
+                    // Only selected entity uses its shader; others fallback
+                    std::ptr::eq(e, &entities[idx]) || (entities[idx].name == e.name)
+                }
+            };
+
             render(
                 &mut framebuffer,
                 e.translation,
@@ -390,8 +566,19 @@ fn main() {
                 time,
                 resolution,
                 &e.vshader,
+                apply_shader,
+                (e.shader.layer1, e.shader.layer2, e.shader.layer3, e.shader.layer4),
+                &e.material,
             );
         }
+
+        let e = &entities[selected_entity];
+        window.set_window_title(&raylib_thread, &format!(
+            "Wireframe | Selected: {} | T=toggle enabled:{} | G/H/J/K L1/L2/L3/L4: {}/{}/{}/{} | Y=Solo, U=All",
+            e.name,
+            e.shader.enabled,
+            e.shader.layer1, e.shader.layer2, e.shader.layer3, e.shader.layer4
+        ));
 
         framebuffer.swap_buffers(&mut window, &raylib_thread);
     }
