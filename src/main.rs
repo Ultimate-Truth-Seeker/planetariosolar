@@ -234,19 +234,6 @@ fn main() {
     let mut entities: Vec<Entity> = vec![
         // The ship we will follow
         Entity {
-            name: "ship",
-            translation: Vector3::new(3.0, 0.0, 0.0),
-            rotation: Vector3::new(0.0, 0.0, 0.0),
-            scale: 1.0,
-            motion: Motion::Static,
-            vertices: ship_vertices.clone(),
-            vshader: VertexShader::Identity,
-            spin: Vector3::new(0.0, 0.0, 0.0),
-            face_tangent: false,
-            shader: ShaderConfig { enabled: true, layer1: true, layer2: true, layer3: true, layer4: true },
-            material: Material::rocky(),
-        },
-        Entity {
             name: "sun",
             translation: Vector3::new(0.0, 0.0, 0.0),
             rotation: Vector3::new(0.0, 0.0, 0.0),
@@ -514,9 +501,9 @@ fn main() {
             }
         }
 
-        // --- Follow camera: lock target to ship position ---
-        if let Some(ship) = entities.iter().find(|ent| ent.name == "ship") {
-            camera.set_target(ship.translation);
+        // --- Follow camera: lock target to sun position ---
+        if let Some(sun) = entities.iter().find(|ent| ent.name == "sun") {
+            camera.set_target(sun.translation);
         }
 
         let view = camera.get_view_matrix();

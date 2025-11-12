@@ -181,7 +181,7 @@ pub fn fragment_shader(fragment: &Fragment, u: &Uniforms, layers: (bool, bool, b
         let r = (uv.x * uv.x + uv.y * uv.y).sqrt();
         let mix_r = (r / mat.pal_mix_radius).clamp(0.0, 1.0);
         let pal = pal1 * (1.0 - mix_r) + pal2 * mix_r;
-        col = col * 0.4 + pal * 0.6;
+        col = col * 0.2 + pal * 0.8;
     }
 
     // ---- L2: Bandas / Estrías ----
